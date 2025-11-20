@@ -3,28 +3,28 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../lib/utils.js";
 import { sendWelcomeEmail } from "../emails/emailHandlers.js";
 import { ENV } from "../lib/env.js";
-import e from "express";
+import cloudinary from "../lib/cloudinary.js";
 
-export const signup = async (req,res) => {
-    const {fullName, email, password} = req.body;
+export const signup = async (req, res) => {
+    const { fullName, email, password } = req.body;
     try {
-        if(!fullName || !email || !password){
-            return res.status(400).json({message:"所有空必须都填上"});
+        if (!fullName || !email || !password) {
+            return res.status(400).json({ message: "所有空必须都填上" });
         }
 
-        if(password.length < 6){
-            return res.status(400).json({message:"密码长度至少为6位"});
+        if (password.length < 6) {
+            return res.status(400).json({ message: "密码长度至少为6位" });
         }
 
         //检查Email是否正确：正则表达式
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if(!emailRegex.test(email)){
-            return res.status(400).json({message:"邮箱地址无效"});
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ message: "邮箱地址无效" });
         }
 
-        const user = await User.findOne({email});
-        if(user){
-            return res.status(400).json({message:"邮箱已存在"});
+        const user = await User.findOne({ email });
+        if (user) {
+            return res.status(400).json({ message: "邮箱已存在" });
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -33,10 +33,10 @@ export const signup = async (req,res) => {
         const newUser = new User({
             fullName,
             email,
-            password:hashPassword
+            password: hashPassword
         });
 
-        if(newUser){
+        if (newUser) {
             // generateToken(newUser._id, res);
             // await newUser.save();
 
@@ -44,10 +44,10 @@ export const signup = async (req,res) => {
             generateToken(saveUser._id, res);
 
             res.status(201).json({
-                _id:newUser._id,
-                fullName:newUser.fullName,
-                email:newUser.email,
-                profilePic:newUser.profilePic,
+                _id: newUser._id,
+                fullName: newUser.fullName,
+                email: newUser.email,
+                profilePic: newUser.profilePic,
             });
 
             try {
@@ -56,27 +56,31 @@ export const signup = async (req,res) => {
                 console.error("Fail to send welcome email:", error);
             }
         } else {
-            res.status(400).json({message:"用户数据无效"});
+            res.status(400).json({ message: "用户数据无效" });
         }
 
     } catch (error) {
         console.log("Error in signup controller:", error);
-        res.status(500).json({message:"内部服务器错误"});
+        res.status(500).json({ message: "内部服务器错误" });
     }
 };
 
 export const login = async (req, res) => {
-    const {email, password} = req.body;
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+        return res.status(400).json({ message: "需要邮箱或者密码" });
+    }
 
     try {
-        const user = await User.findOne({email});
-        if(!user) {
-            return res.status(400).json({message:"无效的凭据"});
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ message: "无效的凭据" });
         }
 
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
-        if(!isPasswordCorrect) {
-            return res.status(400).json({message:"无效的凭据"});
+        if (!isPasswordCorrect) {
+            return res.status(400).json({ message: "无效的凭据" });
         }
 
         generateToken(user._id, res);
@@ -90,10 +94,36 @@ export const login = async (req, res) => {
 
     } catch (error) {
         console.error("Error in login:", error);
-        res.status(500).json({message:"内部服务器错误"});
+        res.status(500).json({ message: "内部服务器错误" });
     }
 };
+
 export const logout = (_, res) => {
-    res.cookie("jwt", "", {maxAge:0});
-    res.status(200).json({message:"登出成功"})
+    res.cookie("jwt", "", { maxAge: 0 });
+    res.status(200).json({ message: "登出成功" })
+};
+
+export const updateProfile = async (req, res) => {
+    try {
+        const { profilePic } = req.body;
+        if (!profilePic) {
+            return res.status(400).json({ message: "个人资料是必需的" });
+        }
+
+        const userId = req.user._id;
+
+        const uploadResponse = await cloudinary.uploader.upload(profilePic);
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId, 
+            {profilePic: uploadResponse.secure_url}, 
+            {new: true}
+        );
+
+        res.status(200).json({updatedUser});
+
+    } catch (error) {
+        console.log("更新个人资料错误:", error);
+        res.status(500).json({message: "内部服务器错误"});
+    }
 };
