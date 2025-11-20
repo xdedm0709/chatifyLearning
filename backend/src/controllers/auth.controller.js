@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { generateToken } from "../lib/utils.js";
 import { sendWelcomeEmail } from "../emails/emailHandlers.js";
 import { ENV } from "../lib/env.js";
+import e from "express";
 
 export const signup = async (req,res) => {
     const {fullName, email, password} = req.body;
@@ -62,4 +63,37 @@ export const signup = async (req,res) => {
         console.log("Error in signup controller:", error);
         res.status(500).json({message:"内部服务器错误"});
     }
-}
+};
+
+export const login = async (req, res) => {
+    const {email, password} = req.body;
+
+    try {
+        const user = await User.findOne({email});
+        if(!user) {
+            return res.status(400).json({message:"无效的凭据"});
+        }
+
+        const isPasswordCorrect = await bcrypt.compare(password, user.password);
+        if(!isPasswordCorrect) {
+            return res.status(400).json({message:"无效的凭据"});
+        }
+
+        generateToken(user._id, res);
+
+        res.status(200).json({
+            _id: user._id,
+            fullName: user.fullName,
+            email: user.email,
+            profilePic: user.profilePic,
+        });
+
+    } catch (error) {
+        console.error("Error in login:", error);
+        res.status(500).json({message:"内部服务器错误"});
+    }
+};
+export const logout = (_, res) => {
+    res.cookie("jwt", "", {maxAge:0});
+    res.status(200).json({message:"登出成功"})
+};
